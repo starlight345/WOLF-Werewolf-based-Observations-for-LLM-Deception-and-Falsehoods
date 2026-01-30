@@ -75,13 +75,11 @@ class HuggingFaceLLM:
         
         messages = [{"role": "user", "content": prompt}]
         
+        # Use greedy decoding to avoid NaN issues with sampling
         outputs = self.pipe(
             messages,
             max_new_tokens=max_new_tokens,
-            temperature=max(self.temperature, 0.1),  # Ensure temperature > 0
-            do_sample=True,
-            top_p=0.9,
-            top_k=50,
+            do_sample=False,  # Greedy decoding - more stable
             pad_token_id=self.tokenizer.pad_token_id,
             eos_token_id=self.tokenizer.eos_token_id,
         )
