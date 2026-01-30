@@ -12,12 +12,12 @@ load_dotenv()
 api_key = os.getenv("OPENAI_API_KEY")
 
 
-class HuggingFaceLLM:
-    """Wrapper for HuggingFace models to match LangChain interface."""
+class VLLMWrapper:
+    """Wrapper for vLLM with tensor parallelism for maximum GPU utilization."""
     
     def __init__(self, model_name: str, temperature: float = 0.7, max_tokens: int = 512):
         import torch
-        from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline, BitsAndBytesConfig
+        from vllm import LLM, SamplingParams
         
         self.model_name = model_name
         self.temperature = temperature
@@ -30,29 +30,70 @@ class HuggingFaceLLM:
         for i in range(n_gpus):
             print(f"  GPU {i}: {torch.cuda.get_device_name(i)}")
         
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        # Use tensor parallelism across all GPUs for maximum utilization
+        # vLLM will shard the model across GPUs and run in parallel
+        self.llm = LLM(
+            model=model_name,
+            tensor_parallel_size=n_gpus,
+            dtype="bfloat16",
+            trust_remote_code=True,
+            max_model_len=8192,  # Limit context to save memory
+        )
+        print(f"Model loaded with tensor parallelism across {n_gpus} GPUs")
+    
+    def invoke(self, prompt: str, max_tokens: int = None, timeout: int = None):
+        """Generate response matching LangChain interface."""
+        from vllm import SamplingParams
         
-        # Optimize for multi-GPU with tensor parallelism
-        # For 8B model on 3x A100 80GB, spread across all GPUs
-        # Try Flash Attention 2, fall back to SDPA if not available
-        try:
-            self.model = AutoModelForCausalLM.from_pretrained(
-                model_name,
-                torch_dtype=torch.bfloat16,
-                device_map="auto",
-                attn_implementation="flash_attention_2",
-                low_cpu_mem_usage=True,
-            )
-            print("Using Flash Attention 2")
-        except Exception as e:
-            print(f"Flash Attention 2 not available ({e}), using SDPA")
-            self.model = AutoModelForCausalLM.from_pretrained(
-                model_name,
-                torch_dtype=torch.bfloat16,
-                device_map="auto",
-                attn_implementation="sdpa",
-                low_cpu_mem_usage=True,
-            )
+        max_new_tokens = max_tokens or self.max_tokens
+        
+        # Format as chat message
+        messages = [{"role": "user", "content": prompt}]
+        
+        # Apply chat template
+        tokenizer = self.llm.get_tokenizer()
+        formatted_prompt = tokenizer.apply_chat_template(
+            messages, 
+            tokenize=False, 
+            add_generation_prompt=True
+        )
+        
+        sampling_params = SamplingParams(
+            temperature=0,  # Greedy for stability
+            max_tokens=max_new_tokens,
+        )
+        
+        outputs = self.llm.generate([formatted_prompt], sampling_params)
+        generated_text = outputs[0].outputs[0].text
+        
+        class Response:
+            def __init__(self, text):
+                self.content = text
+        
+        return Response(generated_text)
+
+
+class HuggingFaceLLM:
+    """Fallback wrapper for HuggingFace models (single GPU)."""
+    
+    def __init__(self, model_name: str, temperature: float = 0.7, max_tokens: int = 512):
+        import torch
+        from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
+        
+        self.model_name = model_name
+        self.temperature = temperature
+        self.max_tokens = max_tokens
+        
+        print(f"Loading model: {model_name} (HuggingFace fallback)")
+        
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        self.model = AutoModelForCausalLM.from_pretrained(
+            model_name,
+            torch_dtype=torch.bfloat16,
+            device_map="auto",
+            attn_implementation="flash_attention_2",
+            low_cpu_mem_usage=True,
+        )
         
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
@@ -63,23 +104,17 @@ class HuggingFaceLLM:
             tokenizer=self.tokenizer,
             torch_dtype=torch.bfloat16,
         )
-        
-        # Print device map for verification
-        if hasattr(self.model, 'hf_device_map'):
-            print(f"Model device map: {self.model.hf_device_map}")
         print(f"Model loaded successfully")
     
     def invoke(self, prompt: str, max_tokens: int = None, timeout: int = None):
         """Generate response matching LangChain interface."""
         max_new_tokens = max_tokens or self.max_tokens
-        
         messages = [{"role": "user", "content": prompt}]
         
-        # Use greedy decoding to avoid NaN issues with sampling
         outputs = self.pipe(
             messages,
             max_new_tokens=max_new_tokens,
-            do_sample=False,  # Greedy decoding - more stable
+            do_sample=False,
             pad_token_id=self.tokenizer.pad_token_id,
             eos_token_id=self.tokenizer.eos_token_id,
         )
@@ -104,11 +139,20 @@ def get_llm(model_name="gpt-4o", api_key=None):
         hf_model_name = model_config.get("name", model_name)
         temperature = model_config.get("temperature", 0.7)
         max_tokens = model_config.get("max_tokens", 512)
-        return HuggingFaceLLM(
-            model_name=hf_model_name,
-            temperature=temperature,
-            max_tokens=max_tokens
-        )
+        # Use vLLM for tensor parallelism (much better GPU utilization)
+        try:
+            return VLLMWrapper(
+                model_name=hf_model_name,
+                temperature=temperature,
+                max_tokens=max_tokens
+            )
+        except Exception as e:
+            print(f"vLLM failed ({e}), falling back to HuggingFace")
+            return HuggingFaceLLM(
+                model_name=hf_model_name,
+                temperature=temperature,
+                max_tokens=max_tokens
+            )
     else:
         if api_key:
             os.environ["OPENAI_API_KEY"] = api_key
