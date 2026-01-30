@@ -17,19 +17,35 @@ class HuggingFaceLLM:
     
     def __init__(self, model_name: str, temperature: float = 0.7, max_tokens: int = 512):
         import torch
-        from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
+        from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline, BitsAndBytesConfig
         
         self.model_name = model_name
         self.temperature = temperature
         self.max_tokens = max_tokens
         
+        # Get number of available GPUs
+        n_gpus = torch.cuda.device_count()
         print(f"Loading model: {model_name}")
+        print(f"Available GPUs: {n_gpus}")
+        for i in range(n_gpus):
+            print(f"  GPU {i}: {torch.cuda.get_device_name(i)}")
+        
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        
+        # Optimize for multi-GPU with tensor parallelism
+        # For 8B model on 3x A100 80GB, spread across all GPUs
         self.model = AutoModelForCausalLM.from_pretrained(
             model_name,
             torch_dtype=torch.bfloat16,
-            device_map="auto",
+            device_map="auto",  # Automatically distribute across all GPUs
+            attn_implementation="flash_attention_2",  # Use Flash Attention 2 for speed
+            low_cpu_mem_usage=True,
         )
+        
+        # Compile model for faster inference (PyTorch 2.0+)
+        if hasattr(torch, 'compile'):
+            print("Compiling model with torch.compile for faster inference...")
+            self.model = torch.compile(self.model, mode="reduce-overhead")
         
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
@@ -38,8 +54,13 @@ class HuggingFaceLLM:
             "text-generation",
             model=self.model,
             tokenizer=self.tokenizer,
+            torch_dtype=torch.bfloat16,
         )
-        print(f"Model loaded successfully on device: {self.model.device}")
+        
+        # Print device map for verification
+        if hasattr(self.model, 'hf_device_map'):
+            print(f"Model device map: {self.model.hf_device_map}")
+        print(f"Model loaded successfully")
     
     def invoke(self, prompt: str, max_tokens: int = None, timeout: int = None):
         """Generate response matching LangChain interface."""
