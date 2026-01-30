@@ -50,14 +50,9 @@ class HuggingFaceLLM:
                 model_name,
                 torch_dtype=torch.bfloat16,
                 device_map="auto",
-                attn_implementation="sdpa",  # Scaled Dot Product Attention (PyTorch native)
+                attn_implementation="sdpa",
                 low_cpu_mem_usage=True,
             )
-        
-        # Compile model for faster inference (PyTorch 2.0+)
-        if hasattr(torch, 'compile'):
-            print("Compiling model with torch.compile for faster inference...")
-            self.model = torch.compile(self.model, mode="reduce-overhead")
         
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
@@ -83,9 +78,12 @@ class HuggingFaceLLM:
         outputs = self.pipe(
             messages,
             max_new_tokens=max_new_tokens,
-            temperature=self.temperature,
+            temperature=max(self.temperature, 0.1),  # Ensure temperature > 0
             do_sample=True,
+            top_p=0.9,
+            top_k=50,
             pad_token_id=self.tokenizer.pad_token_id,
+            eos_token_id=self.tokenizer.eos_token_id,
         )
         
         generated_text = outputs[0]["generated_text"][-1]["content"]
