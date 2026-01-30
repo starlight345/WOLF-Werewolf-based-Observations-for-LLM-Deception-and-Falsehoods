@@ -34,13 +34,25 @@ class HuggingFaceLLM:
         
         # Optimize for multi-GPU with tensor parallelism
         # For 8B model on 3x A100 80GB, spread across all GPUs
-        self.model = AutoModelForCausalLM.from_pretrained(
-            model_name,
-            torch_dtype=torch.bfloat16,
-            device_map="auto",  # Automatically distribute across all GPUs
-            attn_implementation="flash_attention_2",  # Use Flash Attention 2 for speed
-            low_cpu_mem_usage=True,
-        )
+        # Try Flash Attention 2, fall back to SDPA if not available
+        try:
+            self.model = AutoModelForCausalLM.from_pretrained(
+                model_name,
+                torch_dtype=torch.bfloat16,
+                device_map="auto",
+                attn_implementation="flash_attention_2",
+                low_cpu_mem_usage=True,
+            )
+            print("Using Flash Attention 2")
+        except Exception as e:
+            print(f"Flash Attention 2 not available ({e}), using SDPA")
+            self.model = AutoModelForCausalLM.from_pretrained(
+                model_name,
+                torch_dtype=torch.bfloat16,
+                device_map="auto",
+                attn_implementation="sdpa",  # Scaled Dot Product Attention (PyTorch native)
+                low_cpu_mem_usage=True,
+            )
         
         # Compile model for faster inference (PyTorch 2.0+)
         if hasattr(torch, 'compile'):
