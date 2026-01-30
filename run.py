@@ -165,13 +165,22 @@ def get_llm(model_name="gpt-4o", api_key=None):
         )
 
 
-def run_werewolf_game(model_name="gpt-4o", api_key=None, log_dir: str = "./logs", enable_file_logging: bool = True):
+def run_werewolf_game(model_name="gpt-4o", api_key=None, log_dir: str = "./logs", enable_file_logging: bool = True, judge_model: str = None):
     """Run a werewolf game with the specified model."""
     print_header("Starting Werewolf Game")
-    print_kv("Model", model_name)
+    print_kv("Player Model", model_name)
     
-    # Initialize the language model
+    # Initialize the language model for players
     llm = get_llm(model_name, api_key)
+    
+    # Initialize judge model (for deception detection)
+    if judge_model and judge_model != model_name:
+        print_kv("Judge Model", judge_model)
+        judge_llm = get_llm(judge_model, api_key)
+    else:
+        judge_llm = llm  # Use same model for judging
+        if judge_model:
+            print_kv("Judge Model", f"{judge_model} (same as player)")
     
     # Set shared LLM for bidding system
     from Bidding import set_shared_llm
@@ -226,6 +235,7 @@ def run_werewolf_game(model_name="gpt-4o", api_key=None, log_dir: str = "./logs"
         "recursion_limit": 1000,
         "configurable": {
             "player_objects": player_objects,
+            "judge_llm": judge_llm,  # Separate LLM for deception detection
             "MAX_DEBATE_TURNS": 6
         }
     })
@@ -254,7 +264,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--model", 
         default="gpt-4o",
-        help="Model to use (default: gpt-4o). Options: gpt-4o, gpt-4o-mini, llama-3.1-8b, llama-3.1-70b"
+        help="Model to use for players (default: gpt-4o). Options: gpt-4o, gpt-4o-mini, llama-3.1-8b, llama-3.1-70b"
+    )
+    parser.add_argument(
+        "--judge-model",
+        default=None,
+        help="Model to use for deception detection judge (default: same as --model). Use llama-3.1-70b for stronger judgments"
     )
     parser.add_argument(
         "--api-key",
@@ -275,7 +290,13 @@ if __name__ == "__main__":
     
     try:
         # If no API key provided via args, rely on environment variables loaded from .env
-        final_state = run_werewolf_game(args.model, args.api_key, log_dir=args.log_dir, enable_file_logging=(not args.no_file_logging))
+        final_state = run_werewolf_game(
+            args.model, 
+            args.api_key, 
+            log_dir=args.log_dir, 
+            enable_file_logging=(not args.no_file_logging),
+            judge_model=args.judge_model
+        )
 
         print_subheader("Game Results")
         print_kv("Final alive players", final_state.alive_players, indent=2)

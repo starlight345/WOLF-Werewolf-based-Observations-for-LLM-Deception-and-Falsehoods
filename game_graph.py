@@ -82,8 +82,9 @@ def analyze_statement_deception(state: GameState, speaker_name: str, statement: 
     """
     Analyze a statement for deception using self-analysis and peer analysis.
     """
-    # Initialize deception detector 
-    detector = DeceptionDetector(player_objects[speaker_name].llm)
+    # Use dedicated judge LLM if provided, otherwise fall back to player's LLM
+    judge_llm = config.get("configurable", {}).get("judge_llm", player_objects[speaker_name].llm)
+    detector = DeceptionDetector(judge_llm)
     
     context = f"Round {state.round_num}, Phase: {state.phase}. Alive players: {', '.join(state.alive_players)}."
     if state.debate_log:
