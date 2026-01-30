@@ -1,23 +1,25 @@
 import random
-from langchain_openai import ChatOpenAI
-import os
-# ChatGpt model setup - initialize lazily
-_llm = None
 
-def get_llm():
-    global _llm
-    if _llm is None:
-        model_name = os.environ.get("MODEL_NAME", "gpt-4o")
-        _llm = ChatOpenAI(model=model_name, temperature=0.7)
-    return _llm
+# Global LLM instance - set by run.py
+_shared_llm = None
 
-def get_bid(player_name: str, dialogue_history: str):
+def set_shared_llm(llm):
+    """Set the shared LLM instance for bidding."""
+    global _shared_llm
+    _shared_llm = llm
+
+def get_bid(player_name: str, dialogue_history: str, llm=None):
     """
-    Calls gpt to get a bid (0-10) from a player based on the debate so far.
+    Calls LLM to get a bid (0-10) from a player based on the debate so far.
 
     Returns:
         (int, str): (numeric bid value, raw model output)
     """
+    # Use passed LLM or fall back to shared LLM
+    active_llm = llm or _shared_llm
+    if active_llm is None:
+        raise ValueError("No LLM available. Call set_shared_llm() first or pass llm parameter.")
+    
     prompt = f"""
 You are a player in a competitive game of Werewolf. Your name is {player_name}.
 Here is the current conversation between players:
@@ -29,7 +31,7 @@ How strongly do you want to speak next? Return a single number from 0 to 10.
 Only respond with the number. Do not explain.
 """
 
-    response = get_llm().invoke(prompt).content.strip()
+    response = active_llm.invoke(prompt).content.strip()
     try:
         bid = int(response)
         bid = max(0, min(10, bid))

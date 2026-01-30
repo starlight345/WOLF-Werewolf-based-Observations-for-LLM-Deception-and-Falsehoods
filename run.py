@@ -173,6 +173,10 @@ def run_werewolf_game(model_name="gpt-4o", api_key=None, log_dir: str = "./logs"
     # Initialize the language model
     llm = get_llm(model_name, api_key)
     
+    # Set shared LLM for bidding system
+    from Bidding import set_shared_llm
+    set_shared_llm(llm)
+    
     # Game setup
     players = ["Alice", "Bob", "Selena", "Raj", "Frank", "Joy", "Cyrus", "Emma"]
     roles = {
