@@ -2,7 +2,8 @@ import os
 import json
 import threading
 from datetime import datetime
-from typing import Dict, Optional
+from typing import Dict, Optional, Any
+import numpy as np
 
 # global lock to ensure concurrent threads don't corrupt log files
 _FILE_LOCK = threading.Lock()
@@ -36,6 +37,9 @@ def init_logging_state(state, log_dir: Optional[str] = None, enable_file_logging
     folder = os.path.join(base_dir, run_id)
     _ensure_dirs(folder)
 
+    activations_dir = os.path.join(folder, "activations")
+    _ensure_dirs(activations_dir)
+    
     paths = {
         "folder": folder,
         "events": os.path.join(folder, "events.ndjson"),
@@ -43,6 +47,7 @@ def init_logging_state(state, log_dir: Optional[str] = None, enable_file_logging
         "meta": os.path.join(folder, "run_meta.json"),
         "metrics": os.path.join(folder, "final_metrics.json"),
         "index": os.path.join(base_dir, "index.jsonl"),  # global index of runs
+        "activations": activations_dir,
     }
 
     # Write meta and append to index
@@ -253,9 +258,35 @@ def write_final_metrics(state) -> Optional[str]:
             json.dump(metrics, f, ensure_ascii=False, indent=2)
     return paths["metrics"]
 
-def log_event(state, event_type: str, actor: Optional[str], content: Dict):
+def save_activations(activations_dict: Dict[str, Any], filepath: str, compress: bool = True) -> None:
+    """
+    Save activation data to disk.
+    
+    Args:
+        activations_dict: Dictionary containing activation arrays and metadata
+        filepath: Path to save the activations file
+        compress: Whether to use compression (default True)
+    """
+    if activations_dict is None:
+        return
+    
+    with _FILE_LOCK:
+        if compress:
+            np.savez_compressed(filepath, **activations_dict)
+        else:
+            np.savez(filepath, **activations_dict)
+
+
+def log_event(state, event_type: str, actor: Optional[str], content: Dict, activations: Optional[Dict[str, Any]] = None):
     """
     Create an event entry, append into state.game_logs, and if configured, stream to NDJSON.
+    
+    Args:
+        state: Game state
+        event_type: Type of event (e.g., "statement", "vote", "elimination")
+        actor: Name of the player/actor
+        content: Event details dictionary
+        activations: Optional activation data to save separately
     """
     entry = {
         "timestamp": datetime.utcnow().isoformat(),
@@ -266,6 +297,28 @@ def log_event(state, event_type: str, actor: Optional[str], content: Dict):
         "actor": actor,
         "details": content,
     }
+    
+    # Save activations if provided
+    if activations is not None:
+        paths = getattr(state, "log_paths", None)
+        if paths and paths.get("activations"):
+            # Generate unique filename
+            run_id = getattr(state, "log_run_id", "unknown")
+            event_id = f"{state.round_num:03d}_{state.step:03d}_{actor}_{event_type}"
+            activation_filename = f"{event_id}.npz"
+            activation_path = os.path.join(paths["activations"], activation_filename)
+            
+            try:
+                save_activations(activations, activation_path, compress=True)
+                # Add reference to the event
+                entry["activation_file"] = activation_filename
+                entry["activation_metadata"] = {
+                    k: v for k, v in activations.items() 
+                    if k != "hidden_states"  # Don't duplicate array in JSON
+                }
+            except Exception as e:
+                print(f"Warning: Failed to save activations: {e}")
+                entry["activation_error"] = str(e)
 
     # Stream to NDJSON if configured
     paths = getattr(state, "log_paths", None)

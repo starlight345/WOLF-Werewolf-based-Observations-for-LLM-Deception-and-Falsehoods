@@ -1,17 +1,24 @@
 from pydantic import BaseModel, Field
-from typing import Dict, List, Optional, Literal, ClassVar
+from typing import Dict, List, Optional, Literal, ClassVar, Any, Union
 import json
 from langchain_openai import ChatOpenAI
+from llm_backends.base import BaseLLMBackend, LLMResponse
 
 class Player(BaseModel):
     name: str
     role: Literal["Villager", "Werewolf", "Seer", "Doctor"]
-    llm: ChatOpenAI
+    llm: Union[ChatOpenAI, BaseLLMBackend, Any]  # Support both old and new backends
     is_alive: bool = True
     scratchpad: List[str] = Field(default_factory=list)
     statements: List[str] = Field(default_factory=list)
     suspicions: Dict[str, float] = Field(default_factory=dict)
     investigations: Optional[List[str]] = None
+    
+    # Config for activation logging
+    log_activations: bool = False
+    
+    class Config:
+        arbitrary_types_allowed = True
 
     VILLAGER_PROMPT_TEMPLATE: ClassVar[str] = """
 You are {name}, a Villager.
@@ -94,22 +101,48 @@ Always follow instructions exactly and output only the requested JSON when asked
     def call_model(self, prompt: str, max_tokens: int = 200, timeout: int = 15) -> dict:
         """
         Invoke the LLM with both token- and time-limits, expecting JSON output.
-        Truncates output to max_tokens and enforces timeout (seconds).
-        Returns parsed JSON and always includes raw text and prompt for logging.
+        Supports both old LangChain backends and new unified backends with activation capture.
+        Returns parsed JSON and always includes raw text, prompt, and optional activations.
         """
-        resp_text = self.llm.invoke(
-            prompt,
-            max_tokens=max_tokens, 
-            timeout=timeout
-        ).content.strip()
+        # Check if using new backend system
+        if isinstance(self.llm, BaseLLMBackend):
+            # New backend system with activation support
+            response: LLMResponse = self.llm.generate(
+                prompt=prompt,
+                max_tokens=max_tokens,
+                timeout=timeout,
+                return_activations=self.log_activations
+            )
+            resp_text = response.text
+            activations = response.activations
+            metadata = response.metadata
+        else:
+            # Legacy LangChain backend (OpenAI, Gemini, etc.)
+            resp_text = self.llm.invoke(
+                prompt,
+                max_tokens=max_tokens, 
+                timeout=timeout
+            ).content.strip()
+            activations = None
+            metadata = None
+        
+        # Parse JSON
         result: Dict = {}
         try:
             result = json.loads(resp_text)
         except json.JSONDecodeError:
             result = {"raw": resp_text}
+        
         # Always include raw response and prompt for logging
         result.setdefault("_raw_response", resp_text)
         result.setdefault("_prompt", prompt)
+        
+        # Add activations and metadata if available
+        if activations is not None:
+            result["_activations"] = activations
+        if metadata is not None:
+            result["_metadata"] = metadata
+        
         return result
 
     def eliminate(self, alive_players: List[str] = None) -> (str, dict): # type: ignore

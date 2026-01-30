@@ -436,11 +436,14 @@ def debate_node(state: GameState, config: RunnableConfig) -> GameState:
         "phase": "vote" if state.step + 1 >= MAX_DEBATE_TURNS else "debate"
     })
     
+    # Extract activations if present
+    activations = log.get("_activations", None)
+    
     state = log_event(state, "debate", next_speaker, {
     "dialogue": dialogue,
     "bids": bid_dict,
     "raw_output": log
-    })
+    }, activations=activations)
     
     return state
 

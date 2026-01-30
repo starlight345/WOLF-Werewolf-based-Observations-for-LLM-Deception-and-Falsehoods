@@ -1,8 +1,26 @@
+# LangChain and LangGraph for game orchestration
 langchain>=0.3.7,<0.4.0
 langgraph>=0.2.41,<0.3.0
 langchain-core>=0.3.8,<0.4.0
 langchain-openai>=0.2.7,<0.3.0
 langchain-google-genai>=2.0.4,<3.0.0
+
+# Core dependencies
 python-dotenv>=1.0,<2.0
 tqdm>=4.66,<5.0
 pydantic>=2.5,<3.0
+numpy>=1.24,<2.0
+
+# Analysis and visualization
+matplotlib>=3.5.0
+scikit-learn>=1.0.0
+
+# Local LLM support (LLaMA with activation capture)
+torch>=2.0.0
+transformers>=4.35.0
+accelerate>=0.24.0
+sentencepiece>=0.1.99
+safetensors>=0.4.0
+
+# Optional: 4-bit/8-bit quantization for memory efficiency
+bitsandbytes>=0.41.0
