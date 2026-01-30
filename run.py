@@ -7,6 +7,13 @@ from dotenv import load_dotenv
 from logs import init_logging_state, write_final_state, print_header, print_subheader, print_kv, write_final_metrics
 from config import AVAILABLE_MODELS
 
+# Redirect ALL caches to ext_hdd2 to avoid home directory quota issues
+os.environ["HF_HOME"] = "/ext_hdd2/nhkoh/.cache/huggingface"
+os.environ["TRANSFORMERS_CACHE"] = "/ext_hdd2/nhkoh/.cache/huggingface"
+os.environ["VLLM_CACHE_ROOT"] = "/ext_hdd2/nhkoh/.cache/vllm"
+os.environ["XDG_CACHE_HOME"] = "/ext_hdd2/nhkoh/.cache"
+os.environ["TMPDIR"] = "/ext_hdd2/nhkoh/tmp"
+
 load_dotenv()
 
 api_key = os.getenv("OPENAI_API_KEY")
@@ -30,16 +37,21 @@ class VLLMWrapper:
         for i in range(n_gpus):
             print(f"  GPU {i}: {torch.cuda.get_device_name(i)}")
         
-        # Use tensor parallelism across all GPUs for maximum utilization
-        # vLLM will shard the model across GPUs and run in parallel
+        # Tensor parallelism requires attention heads to be divisible by GPU count
+        # Llama 3.1 8B has 32 heads, 70B has 64 heads
+        # Valid divisors: 1, 2, 4, 8, 16, 32, 64
+        # Pick largest valid divisor <= n_gpus
+        valid_tp_sizes = [1, 2, 4, 8]
+        tp_size = max(s for s in valid_tp_sizes if s <= n_gpus)
+        
         self.llm = LLM(
             model=model_name,
-            tensor_parallel_size=n_gpus,
+            tensor_parallel_size=tp_size,
             dtype="bfloat16",
             trust_remote_code=True,
-            max_model_len=8192,  # Limit context to save memory
+            max_model_len=8192,
         )
-        print(f"Model loaded with tensor parallelism across {n_gpus} GPUs")
+        print(f"Model loaded with tensor parallelism across {tp_size} GPUs")
     
     def invoke(self, prompt: str, max_tokens: int = None, timeout: int = None):
         """Generate response matching LangChain interface."""
@@ -74,7 +86,7 @@ class VLLMWrapper:
 
 
 class HuggingFaceLLM:
-    """Fallback wrapper for HuggingFace models (single GPU)."""
+    """Fallback wrapper for HuggingFace models (multi-GPU with Flash Attention)."""
     
     def __init__(self, model_name: str, temperature: float = 0.7, max_tokens: int = 512):
         import torch
@@ -84,7 +96,7 @@ class HuggingFaceLLM:
         self.temperature = temperature
         self.max_tokens = max_tokens
         
-        print(f"Loading model: {model_name} (HuggingFace fallback)")
+        print(f"Loading model: {model_name} (HuggingFace with Flash Attention 2)")
         
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.model = AutoModelForCausalLM.from_pretrained(
