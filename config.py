@@ -39,6 +39,22 @@ AVAILABLE_MODELS = {
         "temperature": 0.7,
         "max_tokens": None,
         "provider": "google"
+    },
+
+    # --- HuggingFace / Local Models ---
+    "llama-3.1-8b": {
+        "name": "meta-llama/Llama-3.1-8B-Instruct",
+        "description": "Meta Llama 3.1 8B Instruct - local HuggingFace model",
+        "temperature": 0.7,
+        "max_tokens": 512,
+        "provider": "huggingface"
+    },
+    "llama-3.1-70b": {
+        "name": "meta-llama/Llama-3.1-70B-Instruct",
+        "description": "Meta Llama 3.1 70B Instruct - large local model",
+        "temperature": 0.7,
+        "max_tokens": 512,
+        "provider": "huggingface"
     }
 }
 

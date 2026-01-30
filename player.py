@@ -1,12 +1,11 @@
 from pydantic import BaseModel, Field
-from typing import Dict, List, Optional, Literal, ClassVar
+from typing import Dict, List, Optional, Literal, ClassVar, Any
 import json
-from langchain_openai import ChatOpenAI
 
 class Player(BaseModel):
     name: str
     role: Literal["Villager", "Werewolf", "Seer", "Doctor"]
-    llm: ChatOpenAI
+    llm: Any  # Accepts ChatOpenAI, HuggingFaceLLM, or any compatible LLM
     is_alive: bool = True
     scratchpad: List[str] = Field(default_factory=list)
     statements: List[str] = Field(default_factory=list)

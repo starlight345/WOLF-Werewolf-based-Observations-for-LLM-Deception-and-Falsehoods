@@ -5,24 +5,91 @@ import os
 import argparse
 from dotenv import load_dotenv
 from logs import init_logging_state, write_final_state, print_header, print_subheader, print_kv, write_final_metrics
+from config import AVAILABLE_MODELS
 
 load_dotenv()
 
 api_key = os.getenv("OPENAI_API_KEY")
 
 
+class HuggingFaceLLM:
+    """Wrapper for HuggingFace models to match LangChain interface."""
+    
+    def __init__(self, model_name: str, temperature: float = 0.7, max_tokens: int = 512):
+        import torch
+        from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
+        
+        self.model_name = model_name
+        self.temperature = temperature
+        self.max_tokens = max_tokens
+        
+        print(f"Loading model: {model_name}")
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        self.model = AutoModelForCausalLM.from_pretrained(
+            model_name,
+            torch_dtype=torch.bfloat16,
+            device_map="auto",
+        )
+        
+        if self.tokenizer.pad_token is None:
+            self.tokenizer.pad_token = self.tokenizer.eos_token
+        
+        self.pipe = pipeline(
+            "text-generation",
+            model=self.model,
+            tokenizer=self.tokenizer,
+        )
+        print(f"Model loaded successfully on device: {self.model.device}")
+    
+    def invoke(self, prompt: str, max_tokens: int = None, timeout: int = None):
+        """Generate response matching LangChain interface."""
+        max_new_tokens = max_tokens or self.max_tokens
+        
+        messages = [{"role": "user", "content": prompt}]
+        
+        outputs = self.pipe(
+            messages,
+            max_new_tokens=max_new_tokens,
+            temperature=self.temperature,
+            do_sample=True,
+            pad_token_id=self.tokenizer.pad_token_id,
+        )
+        
+        generated_text = outputs[0]["generated_text"][-1]["content"]
+        
+        class Response:
+            def __init__(self, text):
+                self.content = text
+        
+        return Response(generated_text)
+
+
 def get_llm(model_name="gpt-4o", api_key=None):
     """Initialize the language model with configurable parameters."""
-    if api_key:
-        os.environ["OPENAI_API_KEY"] = api_key
-    elif not os.environ.get("OPENAI_API_KEY"):
-        raise ValueError("OPENAI_API_KEY environment variable not set and no API key provided")
     os.environ["MODEL_NAME"] = model_name
     
-    return ChatOpenAI(
-        model=model_name,
-        temperature=0.7
-    )
+    model_config = AVAILABLE_MODELS.get(model_name, {})
+    provider = model_config.get("provider", "openai")
+    
+    if provider == "huggingface":
+        hf_model_name = model_config.get("name", model_name)
+        temperature = model_config.get("temperature", 0.7)
+        max_tokens = model_config.get("max_tokens", 512)
+        return HuggingFaceLLM(
+            model_name=hf_model_name,
+            temperature=temperature,
+            max_tokens=max_tokens
+        )
+    else:
+        if api_key:
+            os.environ["OPENAI_API_KEY"] = api_key
+        elif not os.environ.get("OPENAI_API_KEY"):
+            raise ValueError("OPENAI_API_KEY environment variable not set and no API key provided")
+        
+        return ChatOpenAI(
+            model=model_name,
+            temperature=0.7
+        )
 
 
 def run_werewolf_game(model_name="gpt-4o", api_key=None, log_dir: str = "./logs", enable_file_logging: bool = True):
@@ -110,7 +177,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--model", 
         default="gpt-4o",
-        help="Model to use (default: gpt-4o). Options: gpt-4o, gpt-4-turbo, gpt-3.5-turbo"
+        help="Model to use (default: gpt-4o). Options: gpt-4o, gpt-4o-mini, llama-3.1-8b, llama-3.1-70b"
     )
     parser.add_argument(
         "--api-key",
