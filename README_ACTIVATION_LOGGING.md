@@ -8,13 +8,19 @@ This is an enhanced version of WOLF (Werewolf-based Observations for LLM Decepti
 
 ## New Features
 
-### 1. LLaMA Backend with Activation Capture
+### 1. LLaMA Backend with Activation Capture (TransformerLens)
 
-Instead of using API-based models (GPT-4, Gemini), you can now run local LLaMA models with full access to internal hidden states:
+Instead of using API-based models (GPT-4, Gemini), you can now run local LLaMA models with full access to internal hidden states using **TransformerLens** - the standard library for mechanistic interpretability research:
 
 ```bash
 python run.py --model llama-3.1-8b --log-activations
 ```
+
+**Why TransformerLens?**
+- Industry standard for activation research
+- Clean hook system (`blocks.{layer}.hook_resid_post`)
+- Used by Anthropic, EleutherAI, and most interpretability labs
+- Standardized naming conventions across models
 
 ### 2. Activation Logging System
 
@@ -27,8 +33,13 @@ When enabled, the system captures and saves:
 ### 3. Unified Backend Architecture
 
 The new `llm_backends/` module provides a unified interface for:
-- **LlamaHFBackend**: Local LLaMA with activation capture
+- **LlamaHFBackend**: Local LLaMA with TransformerLens activation capture
 - **OpenAICompatBackend**: API-based models (OpenAI, Gemini)
+
+**TransformerLens Integration:**
+- Uses `HookedTransformer.from_pretrained()` for model loading
+- `run_with_cache()` for efficient activation capture
+- Standard hook names: `blocks.{layer}.hook_resid_post` (residual stream)
 
 ## Installation
 
@@ -126,6 +137,7 @@ Each `.npz` file contains:
 - `dtype`: data type
 - `n_layers`: number of layers captured
 - `hidden_dim`: dimensionality of hidden states
+- `hook_type`: type of activation hook (e.g., `"resid_post"` for residual stream)
 
 ### Event NDJSON Schema
 
@@ -295,6 +307,16 @@ With internal activation logging, you can now investigate:
 
 ## Troubleshooting
 
+### TransformerLens Installation Issues
+
+```bash
+# Install latest version
+pip install transformer-lens --upgrade
+
+# If import errors persist
+pip install transformer-lens[all]
+```
+
 ### CUDA Out of Memory
 
 Use 4-bit quantization:
@@ -303,6 +325,8 @@ python run.py --model llama-3.1-8b-4bit
 ```
 
 Or reduce batch size / max length in `config.py`.
+
+**Note:** TransformerLens may require slightly more memory than vanilla transformers due to hook overhead.
 
 ### Model Download Issues
 

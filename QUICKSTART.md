@@ -5,12 +5,15 @@
 ```bash
 cd /home/sychoe/WOLF-Werewolf-based-Observations-for-LLM-Deception-and-Falsehoods
 
-# Install all dependencies
+# Install all dependencies (includes TransformerLens)
 pip install -r requirements.txt
 
 # Login to Hugging Face (required for LLaMA models)
 huggingface-cli login
 ```
+
+**About TransformerLens:**
+This system uses TransformerLens, the standard library for mechanistic interpretability research. It provides clean hooks for activation capture and is used by major AI safety labs.
 
 ## Step 2: Configure Your Model
 

@@ -22,5 +22,8 @@ accelerate>=0.24.0
 sentencepiece>=0.1.99
 safetensors>=0.4.0
 
+# TransformerLens for mechanistic interpretability (standard in activation research)
+transformer-lens>=1.17.0
+
 # Optional: 4-bit/8-bit quantization for memory efficiency
 bitsandbytes>=0.41.0

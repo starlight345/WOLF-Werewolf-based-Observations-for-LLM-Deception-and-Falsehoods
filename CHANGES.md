@@ -11,15 +11,17 @@ This fork adds **local LLaMA execution** and **internal activation capture** to 
 **Added Files:**
 - `llm_backends/__init__.py`: Backend module exports
 - `llm_backends/base.py`: Abstract base class for LLM backends
-- `llm_backends/llama_hf.py`: HuggingFace Transformers backend with activation capture
+- `llm_backends/llama_hf.py`: **TransformerLens-based backend** with activation capture
 - `llm_backends/openai_compat.py`: Wrapper for existing OpenAI/LangChain APIs
 
 **Benefits:**
 - Unified interface for different LLM providers
+- **TransformerLens integration**: Industry-standard mechanistic interpretability library
+- Clean hook system for activation capture
 - Easy to add new backends (e.g., vLLM, Ollama)
 - Clean separation between API and local models
 
-### 2. Activation Capture System
+### 2. Activation Capture System (TransformerLens)
 
 **Modified Files:**
 - `player.py`: Updated `call_model()` to support new backend system
@@ -28,10 +30,12 @@ This fork adds **local LLaMA execution** and **internal activation capture** to 
   - Extracts and passes activations from LLM responses
 
 **Implementation:**
-- Captures hidden states from configurable layers during generation
+- **Uses TransformerLens `run_with_cache()`** for standardized activation capture
+- Captures residual stream activations (`blocks.{layer}.hook_resid_post`)
 - Supports multiple reduction strategies: last token, mean pooling, full sequence
 - Memory-efficient: float16, compressed NPZ storage
 - ~500 KB per statement (vs several MB uncompressed)
+- Compatible with standard interpretability pipelines
 
 ### 3. Enhanced Logging System
 
@@ -125,10 +129,16 @@ transformers>=4.35.0
 accelerate>=0.24.0
 sentencepiece>=0.1.99
 safetensors>=0.4.0
+transformer-lens>=1.17.0  # NEW: Standard library for mechanistic interpretability
 bitsandbytes>=0.41.0
 matplotlib>=3.5.0
 scikit-learn>=1.0.0
 ```
+
+**TransformerLens** is the key addition - it's the standard library used by:
+- Anthropic (interpretability research)
+- EleutherAI (GPT-NeoX analysis)
+- Most academic mechanistic interpretability labs
 
 ## Backward Compatibility
 
