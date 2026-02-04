@@ -7,12 +7,12 @@ from dotenv import load_dotenv
 from logs import init_logging_state, write_final_state, print_header, print_subheader, print_kv, write_final_metrics
 from config import AVAILABLE_MODELS
 
-# Redirect ALL caches to ext_hdd2 to avoid home directory quota issues
-os.environ["HF_HOME"] = "/ext_hdd2/nhkoh/.cache/huggingface"
-os.environ["TRANSFORMERS_CACHE"] = "/ext_hdd2/nhkoh/.cache/huggingface"
-os.environ["VLLM_CACHE_ROOT"] = "/ext_hdd2/nhkoh/.cache/vllm"
-os.environ["XDG_CACHE_HOME"] = "/ext_hdd2/nhkoh/.cache"
-os.environ["TMPDIR"] = "/ext_hdd2/nhkoh/tmp"
+# Redirect ALL caches to ext_hdd to avoid home directory quota issues
+os.environ["HF_HOME"] = "/ext_hdd/nhkoh/.cache/huggingface"
+os.environ["TRANSFORMERS_CACHE"] = "/ext_hdd/nhkoh/.cache/huggingface"
+os.environ["VLLM_CACHE_ROOT"] = "/ext_hdd/nhkoh/.cache/vllm"
+os.environ["XDG_CACHE_HOME"] = "/ext_hdd/nhkoh/.cache"
+os.environ["TMPDIR"] = "/ext_hdd/nhkoh/tmp"
 
 load_dotenv()
 
